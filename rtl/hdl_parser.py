@@ -102,6 +102,7 @@ def _parse_verilog_port_list(portlist_str):
     for token in filter(None, re.split('[,\t\n ]+', portlist_str)):
         token = token.strip()
         if token in _keyword_port:
+            port = Port("unknown")
             port.size = 1
             port.direction = token
         elif (token == "") or (port is None):
@@ -113,19 +114,17 @@ def _parse_verilog_port_list(portlist_str):
         elif token in _keyword_logic:  # We're into the logic description, doneski!
             return port_list
         elif token == ';':  # Last character is a ';'
-            port = Port("unknown")
+            port = None
         else:
             if token[-1] == ';':
                 port.name = token[:-1]
                 port_list.append(port)
-                if port.name is "1":
-                    pass
-                port = Port("unknown")
+                port = None
             else:
                 try:
+                    port.name = token
                     port_list.append(port)
-                    if port.name is "1":
-                        pass
+                    port = Port("unknown", port.direction, port.comment, port.size, port.default)
                 except KeyError:
                     print "Error:",
                     print port
@@ -146,7 +145,8 @@ def get_hdl_ports(hdl_fname):
 
 
 if __name__ == "__main__":
-    modules = get_hdl_ports("../test/samples/sample.v")
+    # modules = get_hdl_ports("../test/samples/sample.v")
+    modules = get_hdl_ports("")
     mn, ports = modules[0]
     for p in ports:
         print str(p)
