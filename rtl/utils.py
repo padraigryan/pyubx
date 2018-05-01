@@ -1,10 +1,9 @@
-#!/home/prya/usr/bin/python
-
 import datetime
 from string import Template
 import os
-from inst_mod import *  # This is to be phased out
-import pyverilog_parser
+import re
+#from inst_mod import *  # This is to be phased out
+import hdl_parser as parser
 
 base_spec = {
             'h': 16,
@@ -172,16 +171,11 @@ def join_hdl_paths(path_bits, hw_separator='.'):
     path_bits is a list of the layers of hierarchy in order.
     """
     full_path = ""
-    try:
-        for path_bit in path_bits:
-            if (full_path == ""):
-                full_path = path_bit
-            else:
-                full_path = full_path + hw_separator + path_bit
-    except:
-        print "Couldn't join:"
-        print path_bits
-        raise
+    for path_bit in path_bits:
+        if full_path == "":
+            full_path = path_bit
+        else:
+            full_path = full_path + hw_separator + path_bit
 
     return full_path
 
@@ -220,12 +214,9 @@ def list_instances(verilog_file_name):
     TODO: 1) Instances with parameter definitions
           2) Instances within a generate statement
     """
-    try:
-        f = open(verilog_file_name)
-        verilog = f.read()
-        f.close()
-    except:
-        return []
+    with open(verilog_file_name) as verilog_file_h:
+        verilog = verilog_file_h.read()
+        verilog_file_h.close()
 
     inst_list = []
     block_cnt = 0
@@ -346,7 +337,7 @@ def disp_instance_tree(verilog_file_name, level=0):
 
 
 def disp_io(fn, inputs, outputs, inout):
-    (mn, ports) = pyverilog_parser.get_verilog_port_list(open(fn).read())
+    (mn, ports) = parser.get_verilog_port_list(open(fn).read())
 
     if inputs:
         print "Module:" + mn + " Inputs"
@@ -404,8 +395,8 @@ def compare_modules(modules):
         print "ERROR: Can only compare 2 files"
         return
 
-    (mn1, p1) = pyverilog_parser.get_verilog_port_list(open(modules[0]).read())
-    (mn2, p2) = pyverilog_parser.get_verilog_port_list(open(modules[1]).read())
+    (mn1, p1) = parser.get_verilog_port_list(open(modules[0]).read())
+    (mn2, p2) = parser.get_verilog_port_list(open(modules[1]).read())
 
     modules[0] = os.path.abspath(modules[0])
     modules[1] = os.path.abspath(modules[1])
@@ -516,85 +507,3 @@ def lint_code(verilog):
     print "ERROR: Nothing done"
     raise NotImplementedError
 
-
-if __name__ == "__main__":
-
-    commandLine = argparse.ArgumentParser(description='Parse a list of verilog files and displays information',
-                                          usage='%(prog)s xls file(s)')
-    commandLine.add_argument('-in', '--inputs', action='store_true', help='List of inputs', default=False)
-    commandLine.add_argument('-out', '--outputs', action='store_true', help='List of outputs', default=False)
-    commandLine.add_argument('-inout', '--inputoutputs', action='store_true', help='List of bidir ports', default=False)
-    commandLine.add_argument('-inst', '--instances', action='store_true', help='List of instances', default=False)
-    commandLine.add_argument('-inst_tree', '--instance_tree', action='store_true',
-                             help='List of instances in a hierarchical tree format', default=False)
-    commandLine.add_argument('-con', '--connections', action='store_true', help='List of connections for an instance',
-                             default=False)
-    commandLine.add_argument('-com', '--compare', action='store_true', help='Compare the ports of 2 modules',
-                             default=False)
-    commandLine.add_argument('-unld_in', '--unloaded_inputs', action='store_true',
-                             help='List the inputs that are unloaded internally', default=False)
-    commandLine.add_argument('-undrv_out', '--undriven_outputs', action='store_true',
-                             help='List the outputs that are undriven internally', default=False)
-    commandLine.add_argument('-vhdl_pkg', '--vhdl_package', action='store_true',
-                             help='Dumps out a VHDL package for a verilog module', default=False)
-    commandLine.add_argument('-mt', '--module_type')
-    commandLine.add_argument('-mi', '--module_inst')
-    commandLine.add_argument('-sc', '--strip_comments', action='store_true',
-                             help='Strips all the comments from the source files', default=False)
-    commandLine.add_argument('-sn', '--split_netlist', action='store_true', default=False,
-                             help='Split a single file netlist into a set of files in a new directory called netlist')
-    commandLine.add_argument('file_list', help='List of verilog files', nargs='*')
-    opt = commandLine.parse_args()
-
-    if (opt.compare):
-        compare_modules(opt.file_list)
-        sys.exit()
-
-    for file in opt.file_list:
-
-        if opt.instance_tree:
-            disp_instance_tree(file)
-            sys.exit()
-
-        if opt.split_netlist:
-            split_netlist_files(file)
-            sys.exit()
-
-        if opt.strip_comments:
-            disp_strip_comments(file)
-            sys.exit()
-
-        if opt.vhdl_package:
-            gen_vhdl_package(file)
-
-        try:
-            if opt.unloaded_inputs | opt.undriven_outputs:
-                dangling_pins(opt.unloaded_inputs, opt.undriven_outputs)
-
-            if opt.connections:
-                print list_inst_connections(file, opt.module_type, opt.module_inst)
-            if opt.inputs | opt.outputs | opt.inputoutputs:
-                disp_io(file, opt.inputs, opt.outputs, opt.inputoutputs)
-            if opt.instances:
-                disp_instances(file)
-        except:
-            print "Can't open file:" + file
-
-    """
-  assert to_bin_str(5, 4)  == "4'b0101"
-  assert to_bin_str(5)     == "32'b00000000000000000000000000000101"
-  assert to_hex_str(10, 4) == "4'hA"
-  assert to_hex_str(10, 16)== "16'h000A"
-  assert to_hex_str(10)    == "32'h0000000A"
-
-  assert range_to_num_bits('sig_name') == 1
-  assert range_to_num_bits('bus_name[5:0]') == 6
-  assert range_to_num_bits('bus_name[11:5]') == 7
-  assert range_to_num_bits('bus_name[5:11]') == 7
-  assert range_to_num_bits('bus_name[5]') == 1
-
-  assert range_to_num_bits('bus_name<5:0>') == 6
-  assert range_to_num_bits('bus_name<11:5>') == 7
-  assert range_to_num_bits('bus_name<5:11>') == 7
-  assert range_to_num_bits('bus_name<5>') == 1
-  """

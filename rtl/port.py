@@ -1,11 +1,5 @@
-# import sys
-# import os
 
-# import pyverilog_parser
-# import verilog_util
-
-
-class Port():
+class Port:
     def __init__(self, name, direction='output', comment="", size=1, default=None):
         self.name = name
         self.size = size
