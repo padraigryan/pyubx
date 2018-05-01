@@ -1,3 +1,3 @@
 import sys
-sys.path.append("./rtl")
+sys.path.append("../rtl")
 import utils

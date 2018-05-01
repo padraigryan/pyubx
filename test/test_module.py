@@ -3,6 +3,7 @@ import unittest
 
 
 class ModuleTest(unittest.TestCase):
+    @staticmethod
     def testSimpleHier(self):
         top_mod = Module()
         low_mod = Module()
