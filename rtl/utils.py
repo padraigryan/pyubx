@@ -2,8 +2,8 @@ import datetime
 from string import Template
 import os
 import re
-#from inst_mod import *  # This is to be phased out
 import hdl_parser as parser
+import module
 
 base_spec = {
             'h': 16,
@@ -45,12 +45,23 @@ def range_to_num_bits(range_str):
     1) Extract the width from the bus name, e.g. bus_name[2:0]
     2) Handle [] and <> brackets
     3) Big and little endianess (including non-zero to non-zero ranges, eg bus_name[6:5])
-    4) Single bits wires
+    4) Single bits wire
+    5) vhdl std_logic and std_logic_vector
     """
-    range_str = str(range_str)
+
+    range_str = str(range_str).lower()
 
     if range_str == '':
         return 1
+
+    if range_str.startswith("std_logic "):
+        return 1
+
+    if range_str.startswith("std_logic_vector"):
+        bus_range = re.search("std_logic_vector\W*\((.*)\W+downto\W+(.*)\)", range_str)
+        high = eval(bus_range.group(1))
+        low = eval(bus_range.group(2))
+        return high - low + 1
 
     bus_range = re.split('\[|\<', range_str)  # Get the bus_range section at the end of the bus name
     if len(bus_range) > 1:
@@ -64,8 +75,8 @@ def range_to_num_bits(range_str):
         return 1
 
     try:
-        left = int(bus_range.split(':')[0])  # Get the left bound (exception if not a number)
-        right = int(bus_range.split(':')[1])  # Get the right bound (exception if not a number)
+        left = eval(bus_range.split(':')[0])  # Get the left bound (exception if not a number)
+        right = eval(bus_range.split(':')[1])  # Get the right bound (exception if not a number)
         if left >= right:
             return left - right + 1
         else:
@@ -169,6 +180,7 @@ def join_hdl_paths(path_bits, hw_separator='.'):
     """
     like the name says, defaults to a period but can pass it any symbol.
     path_bits is a list of the layers of hierarchy in order.
+    TODO: can this be done with a ".".join call?
     """
     full_path = ""
     for path_bit in path_bits:
@@ -180,6 +192,7 @@ def join_hdl_paths(path_bits, hw_separator='.'):
     return full_path
 
 
+# TODO: Is this useful?
 def _search_keyword(s_str, keyword):
     s_str = re.sub(r'\W+', '', s_str)
     if s_str.find(keyword) < 0:
@@ -426,6 +439,53 @@ def compare_modules(modules):
     print tabulate.tabulate(table, headers=['name', modules[0], modules[1], "Direction"], tablefmt="psql")
 
 
+def create_stub(file_name, drivezero=False):
+    """
+    :param file_name: The module file to create the wrapper for
+    :param drivezero: Should the outputs be driven to zero.
+    :return: An empty stub module
+    """
+    stub = module.Module(file_name)
+
+    for port in stub:
+        if port.direction == "output":
+            stub.add_custom_RTL("assign {} = {}'b{};".format(port.name, port.size, "0"*port.size))
+
+    return stub.export_rtl()
+
+
+def create_wrapper(file_list, wrapper_name = "top_level", prefix=None, suffix=None, blackbox=False, fuzzymatch=95):
+    """
+    Reads each of the rtl modules from file_list.
+    Creates a toplevel module with all the ports
+    instance each sub module with the following rules of connecting pins:
+        1) if the pin is only an input to each sub module, it's an input from the top
+        2) if the pin is output from more than one module,  prepend inst and bring to top level
+        3) if pin is output from one module and input to another, interconnect only
+        4) Repeat rules 1-3 are repeated with the prefix/suffix removed/added.
+        5) Repeat rules 1-4 with fuzzy matching
+        6) All other pins are brought to the top level with the same directionality
+    Black box modules only bring out pins but don't instance sub modules
+    Suffix/Prefix lists help to better match pins.
+
+    :param file_list:
+    :param prefix:
+    :param suffix:
+    :param blackbox:
+    :param fuzzymatch:
+    :return: A new module with the sub-modules instanced and wired according to the rules above.
+    """
+
+    # Create the top level module
+    top_level = module.Module()
+    top_level.module_name = wrapper_name
+
+    for subblock_fn in file_list:
+        top_level.sub_blocks.append(module.Module(subblock_fn))
+
+    return top_level.export_rtl()
+
+
 def gen_vhdl_package(filename):
     filename = os.path.abspath(filename)
 
@@ -463,6 +523,115 @@ package pkg_{0}_comp is
 end package pkg_{0}_comp;
 
 """.format(mn, vhdl_port_list)
+
+def declare_signals(module_name, ports):
+    """
+    Declare the signals
+    :param module_name:
+    :param ports:
+    :return:
+    """
+    disp_str = "\n  // " + module_name + "\n"
+    for port in ports:
+        disp_str = disp_str + "  wire {0:44}{1};\n".format(port.size, port.name)
+    return disp_str
+
+
+def instance_module_style1(module_name, inst_name, ports):
+    """
+    Connect in the same order as declared in the module
+    :param module_name:
+    :param ports:
+    :return:
+    """
+    # Instance the module
+    disp_str = "\n{} {} (\n".format(module_name, inst_name)
+
+    first_pin = True
+    for port in ports:
+        if not first_pin:
+            disp_str = disp_str + "),\n"
+        first_pin = False
+
+        disp_str = disp_str + "    .{0:42}({0}".format(port.name)
+    disp_str = disp_str + ")\n  );\n"
+    return disp_str
+
+
+def instance_module_style2(modulename, inst_name, ports):
+    """
+    Connect with inputs/outputs grouped together
+    :param modulename:
+    :param inst_name:
+    :param ports:
+    :return:
+    """
+    # Instance the module
+    if inst_name is None:
+        inst_name = "i1_" + modulename
+
+    disp_str = "  {} {} (\n".format(modulename, inst_name)
+
+    first_pin = True
+    disp_str = disp_str + "    // Inputs\n"
+    for port in ports:
+        if port.direction  is "input":
+            if first_pin is False:
+                disp_str = disp_str + "),\n"
+            first_pin = False
+
+            disp_str = disp_str + "    .{0:42}({0}".format(port.name)
+
+    disp_str = disp_str + "),\n\n    // Outputs\n"
+
+    first_pin = True
+    for port in ports:
+        if port.direction is "output":
+            if first_pin is False:
+                disp_str = disp_str + "),\n"
+            first_pin = False
+            disp_str = disp_str + "    .{0:42}({0}".format(port.name)
+
+    disp_str = disp_str + ")\n  );\n"
+    return disp_str
+
+
+def instance_module_style3(module_name, ports):
+    raise NotImplementedError("Not much of a use case for this...")
+
+
+def instance_module_style5(module_name, ports):
+    """
+    Instance VHDL module
+    :param module_name:
+    :param ports:
+    :return:
+    """
+    # Instance the module
+    disp_str = "\n{0} : {0} port map (\n".format(module_name)
+
+    for port in ports:
+        disp_str = disp_str + "    {0:42} => {0},".format(port.name) + '\n'
+    disp_str = disp_str[:-1] + "\n  );\n"
+
+    return disp_str
+
+
+###############################################################################
+# Just instance the default way.
+def instance_module(fn, inst_name=None, style="default"):
+    mod_to_inst = module.Module(fn)
+
+    if inst_name is None:
+        inst_name = "i1_" + mod_to_inst.module_name
+
+    inst_style_types = {
+        "default": instance_module_style1,
+        "group_ports": instance_module_style2,
+        "alphabetical": instance_module_style3,
+        "vhdl": instance_module_style5
+    }
+    return inst_style_types[style](mod_to_inst.module_name, inst_name, mod_to_inst.port_list)
 
 
 def dangling_pins(dangling_in, dangling_out):
@@ -507,3 +676,10 @@ def lint_code(verilog):
     print "ERROR: Nothing done"
     raise NotImplementedError
 
+
+if __name__ == "__main__":
+    print instance_module("../test/samples/rtl/sample.v")
+    print create_wrapper(["../test/samples/rtl/sample2.v",
+                          "../test/samples/rtl/sample2.v",
+                          "../test/samples/rtl/sample.v"],
+                         "toplevel_wrapper")

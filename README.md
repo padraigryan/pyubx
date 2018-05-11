@@ -27,9 +27,8 @@ git clone https://github.com/padraig.ryan/pyubx
 
 There's some regression tests available. To run regression:
 ```
-make
+make tests
 ```
-
 
 ### And coding style tests
 
@@ -51,24 +50,33 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ## Still To Do:
 
-* Create a utils for each of the types
+Create a utils for each of the types
 
-# rtl_utils.py
-# vcd_utils.py
-# phy_utils.py
-# hal_utils.py
-* Should this include all the little tools?
-** Alternatively have the tools in <type>_<tool>.py?
+<ol>
+<li> rtl_utils.py
+<li> vcd_utils.py
+<li> phy_utils.py
+<li> hal_utils.py
+<LI> uvm_utils.py
+</ol>
+
+Should this include all the little tools or alternatively have the tools in <type>_<tool>.py?
 
 ### Top level Utils
 #### rtl_utils
+* Move the make_wrapper function into rtl_utils.py
+* Move the inst_mod into the rtl/utils and add it to rtl_utils.py
 * More VHDL support
+* Test Cases to add
+** Create a module, write to file, read back in and compare with original.
+
 #### vcd_utils
-*
+* Move the latest VCD scripts into this workspace
+* Split out the tools
 #### phy_utils
 #### hal_utils
 #### Verilog Utils
-*
+
 
 ### Importable modules
 

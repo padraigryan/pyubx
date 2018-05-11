@@ -1,8 +1,18 @@
+import env
 from utils import *
 import unittest
 
 
 class UtilsTest(unittest.TestCase):
+
+    def testVhdlStdLogicRange(self):
+        self.assertEqual(range_to_num_bits("std_logic"), 1)
+
+    def testVhdlStdLogicVectorRange(self):
+        self.assertEqual(range_to_num_bits("std_logic_vector(3 downto 0)"), 4)
+
+    def testVhdlStdLogicVectorGenericRange(self):
+        self.assertEqual(range_to_num_bits("std_logic_vector(6-1 downto 1+1)"), 4)
 
     def testToBinStrFixedSize(self):
         self.assertEqual(to_bin_str("4'hA", 4), "1010")
@@ -20,10 +30,10 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual(to_hex_str(10), "0000000A")
 
     def testToDecStrFixedSize(self):
-        self.assertEqual(to_dec_str(10, 4), "10")
+        self.assertEqual(to_dec_str(10), "10")
 
     def testToDecStrFixedSize16(self):
-        self.assertEqual(to_dec_str(10, 16), "10")
+        self.assertEqual(to_dec_str(10), "10")
 
     def testToDecStrDefaultSize(self):
         self.assertEqual(to_dec_str(10), "10")
@@ -35,7 +45,7 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual(range_to_num_bits('bus_name[5:0]'), 6)
 
     def testRangeToNumBitsBusRangeDown(self):
-        self.assertEqual(range_to_num_bits('bus_name[11:5]'), 7)
+        self.assertEqual(range_to_num_bits('bus_name[11-1:5-1]'), 7)
 
     def testRangeToNumBitsBusRangeUp(self):
         self.assertEqual(range_to_num_bits('bus_name[5:11]'), 7)
@@ -47,7 +57,7 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual(range_to_num_bits('bus_name<5:0>'), 6)
 
     def testRangeToNumBitsAngleBusRangeDown(self):
-        self.assertEqual(range_to_num_bits('bus_name<11:5>'), 7)
+        self.assertEqual(range_to_num_bits('bus_name<11+1:5+1>'), 7)
 
     def testRangeToNumBitsAngleBusRangeUp(self):
         self.assertEqual(range_to_num_bits('bus_name<5:11>'), 7)
@@ -66,3 +76,10 @@ class UtilsTest(unittest.TestCase):
         self.assertEqual(join_hdl_paths([]), "")
 
     # Comments
+
+    # Create Module
+    def testCreateModule(self):
+        pass
+
+if __name__ == "__main__":
+    unittest.main()

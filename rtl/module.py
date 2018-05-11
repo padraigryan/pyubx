@@ -1,8 +1,7 @@
-import sys
-import os
+#!/usr/bin/env python
 
-import pyverilog_parser
-import verilog_util
+import hdl_parser
+import utils
 from port import *
 
 
@@ -20,6 +19,10 @@ class Module:
             self.name = ""
         else:
             self.parse_rtl_file(name)
+
+    def add_port_list(self, pl):
+        for p in pl:
+            self.add_port(p.name, p.direction, p.comment, p.size)
 
     def add_port(self, port_name, direction, comment="", size=1, def_val=None):
         """
@@ -78,7 +81,7 @@ class Module:
         self.wire_list.append(wire)
 
     def add_custom_RTL(self, rtl_str):
-        self.custom_RTL = self.custom_RTL + "\t" + rtl_str + "\n"
+        self.custom_RTL = self.custom_RTL + "  " + rtl_str + "\n"
 
     def instance_module(self, instance_name=None):
 
@@ -99,13 +102,10 @@ class Module:
         pass
 
     def export_rtl(self, file_name=None, black_box=False):
-        rtl_str = verilog_util.create_copyright_header()
+        rtl_str = utils.create_copyright_header()
 
         if self.module_name is None:
             raise NameError("This module still doesn't have a name")
-
-        if file_name is None:
-            file_name = self.module_name + ".v"
 
         rtl_str = rtl_str + "module " + self.module_name + "(\n"
 
@@ -123,9 +123,12 @@ class Module:
 
             rtl_str = rtl_str + "\n\n" + self.custom_RTL + "\n\n"
 
-            rtl_str = rtl_str + "  // Sub-module Instance\n"
-            for blk in self.sub_blocks:
-                rtl_str = rtl_str + blk.instance_module()
+            if len(self.sub_blocks) > 0:
+                rtl_str = rtl_str + "  // Sub-module Instance\n"
+
+            for blk in range(0, len(self.sub_blocks)):
+                inst_name = "i{}_{} ".format(blk, self.sub_blocks[blk].module_name)
+                rtl_str = rtl_str + self.sub_blocks[blk].instance_module(inst_name)
 
         rtl_str = rtl_str + "endmodule\n"
 
@@ -141,11 +144,10 @@ class Module:
         """
         Parse a verilog file to create a new Module object with all the ports filled out.
         """
-        (mn, ports) = pyverilog_parser.get_verilog_port_list(open(file_name).read())
-        self.module_name = mn
-
-        for p in ports:
-            self.add_port(p['name'], p['type'], "", verilog_util.range_to_num_bits(p['size']))
+        port_list = hdl_parser.get_hdl_ports(file_name)
+        for ports in port_list:
+            self.add_port_list(ports)
+        self.module_name = hdl_parser.get_block_name(file_name)
 
     def _write_pin_list(self):
         disp_str = ""
@@ -164,11 +166,11 @@ class Module:
 
             # Set options
             if p.size > 1:
-                range_str = "[{:2}: 0]".format(port.size - 1)
+                range_str = "[{:2}: 0]".format(p.size - 1)
 
             # Write IO port line
             disp_str = disp_str + "{:8}{:8}{:12}{:60}// {}\n".format(p.direction,
-                                                                     "wire" if port.direction == 'output' else '   ',
+                                                                     "wire" if p.direction == 'output' else '   ',
                                                                      range_str,
                                                                      p.name + ';',
                                                                      p.comment)
@@ -186,26 +188,16 @@ class Module:
 
 
 if __name__ == "__main__":
+
     top_mod = Module()
     low_mod = Module()
+    custom_mod = Module()
 
-    top_mod.parse_rtl_file("samples/rtl/sample.v")
-    low_mod.parse_rtl_file("samples/rtl/sample2.v")
+    top_mod.parse_rtl_file("../test/samples/rtl/sample.v")
+    low_mod.parse_rtl_file("../test/samples/rtl/sample2.v")
     top_mod.sub_blocks.append(low_mod)
-
-    # Create the wires
-    for port in top_mod:
-        if port.direction is "inout":
-            print "wire        {}_PAD;".format(port.name)
-
-    # Create the reg
-    for port in top_mod:
-        if port.direction == "inout":
-            print "reg        {}_reg;".format(port.name)
-        else:
-            if port.size > 1:
-                print "reg [{}:0] {};".format(port.size - 1, port.name)
-            else:
-                print "reg        {};".format(port.name)
+    custom_mod.add_port_list(apb_port_list)
+    custom_mod.module_name = "myblk"
+    top_mod.sub_blocks.append(custom_mod)
 
     top_mod.export_rtl("my_sample.v")

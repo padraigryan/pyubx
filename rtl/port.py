@@ -13,6 +13,19 @@ class Port:
         return "Port: {:30}{:30}{:8}{}".format(self.name, self.connection, self.direction, self.size)
 
 
+apb_port_list = [
+    Port('PClk', 'input', "APB Clock"),
+    Port('PReset', 'input', "APB Reset"),
+    Port('PAddr', 'input', "APB Adddress", 32),
+    Port('PSel', 'input', "APB Select", 1),
+    Port('PEnable', 'input', "APB Enable", 1),
+    Port('PWrite', 'input', "APB Write", 1),
+    Port('PWData', 'input', "APB Write Data", 32),
+    Port('PReady', 'output', "APB Ready", 1),
+    Port('PRData', 'output', "APB Read Data", 32),
+    Port('PSlverr', 'output', "APB ", 1)
+]
+
 # TODO: Leave this here????
 def find_port(name, port_list):
     # Check for capitalisation errors

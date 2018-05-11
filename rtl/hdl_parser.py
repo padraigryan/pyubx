@@ -9,6 +9,40 @@ _keyword_logic = ['always', 'assign', 'always_ff', 'always_comb', 'parameter']
 
 
 def get_vhdl_port_list(vhdl_file):
+    # Clean up to make processing easier
+    vhdl_file = utils.strip_comments(vhdl_file)
+    vhdl_file = vhdl_file.replace('\n', ' ')
+    vhdl_file = vhdl_file.replace('\t', ' ')
+    vhdl_file = vhdl_file.lower()
+
+    # Get the generic's default
+    generics = re.findall("generic\W*\((.+?)\);", vhdl_file)
+    ports = re.findall("port\W*\((.+?)\)\W+end.*;", vhdl_file)
+    ports = ports[0]
+
+    # Process the Generics
+    for generic_line in generics[0].split(';'):
+        generic_result = re.search("(.*)\W*:\W*(.*)\w*:=\W*(.)", generic_line)
+        generic_name = generic_result.group(1).strip()
+        generic_value = generic_result.group(3)
+        ports = ports.replace(generic_name, generic_value)
+
+    # Process the Ports
+    module_port_list = []
+    for port_line in ports.split(';'):
+        port = Port("Unknown")
+        ports_details = re.split(', |: |\W+', port_line)
+        port.size = utils.range_to_num_bits(ports_details[-1])
+        port.direction = ports_details[-2]
+        for port_name in ports_details[:-2]:
+            port.name = port_name
+            module_port_list.append(port)
+            port = Port("Unknown")
+
+    return module_port_list
+
+
+def _old_get_vhdl_port_list(vhdl_file):
     """ Parse the top-level vhdl for the ports list """
     ports = []
     generic_detected = False
@@ -64,6 +98,24 @@ def get_vhdl_port_list(vhdl_file):
         return module_name, ports
 
 
+def get_block_name(hdl_fname):
+    """
+    TODO: Add support for VHDL and verilog and don't repeat this code in the get_verilog_port function
+    :param hdl_fname:
+    :return:
+    """
+    with open(hdl_fname, "r") as fh:
+        verilog_file = fh.read()
+        fh.close()
+
+    verilog_file = utils.strip_comments(verilog_file)
+    verilog_file = verilog_file.replace('\n', ' ')
+    verilog_file = verilog_file.replace('\t', ' ')
+    # Parses the most basic structure of a verilog file.
+    m = re.findall("module[\W+](.+?)\((.*?)\);(.*?)endmodule", verilog_file, re.MULTILINE)
+    return m[0][0]
+
+
 def get_verilog_port_list(verilog_file):
     """
     Get the port list and the rest of the module
@@ -84,7 +136,7 @@ def get_verilog_port_list(verilog_file):
             ports = _parse_verilog_port_list(pl)  # verilog-2001 format
         else:
             ports = _parse_verilog_port_list(arch)  # verilog-95 format
-        module_port_list.append((module_name, ports))
+        module_port_list.append(ports)
     return module_port_list
 
 
@@ -146,7 +198,7 @@ def get_hdl_ports(hdl_fname):
 
 if __name__ == "__main__":
     # modules = get_hdl_ports("../test/samples/sample.v")
-    modules = get_hdl_ports("")
+    modules = get_hdl_ports("../test/samples/rtl/ram.vhdl")
     mn, ports = modules[0]
     for p in ports:
         print str(p)

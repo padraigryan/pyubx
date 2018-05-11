@@ -4,3 +4,5 @@ tests:
 readme:
 	grip  -b README.md &
 
+help:
+	./rtl_utils.py -h
