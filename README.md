@@ -61,22 +61,38 @@ Create a utils for each of the types
 </ol>
 
 Should this include all the little tools or alternatively have the tools in <type>_<tool>.py?
+Correctly create the packages so that the code can be imported properly
 
 ### Top level Utils
 #### rtl_utils
-* Move the make_wrapper function into rtl_utils.py
-* Move the inst_mod into the rtl/utils and add it to rtl_utils.py
 * More VHDL support
 * Test Cases to add
-** Create a module, write to file, read back in and compare with original.
+  * Create a module, write to file, read back in and compare with original.
 
 #### vcd_utils
 * Move the latest VCD scripts into this workspace
-* Split out the tools
+* Add the following decoders
+  * APB
+  * AHB
+  * AXI
+  * I2C
+  * SPI
+ * Time editor for VCD file to do the following:
+   * Shift all/segment forward/backward in time
+   * Delete a segment of a VCD out
+   * Change the timebase
+   * Insert a delay at a given time
+   * Copy/paste all/segment of the waveform
+ * Test the hell out of it!!
+
 #### phy_utils
+ * Copy in the def/lef and split into tool and utils
+ * Add the fixes/updates needed
+
 #### hal_utils
-#### Verilog Utils
+ * Put all RAL classes into a single module.
+ * Add a spirit 1685 xml parser to read/load registers
+ * Handle memories
 
-
-### Importable modules
+### Importable Modules
 
