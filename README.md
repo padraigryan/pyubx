@@ -66,6 +66,8 @@ Correctly create the packages so that the code can be imported properly
 ### Top level Utils
 #### rtl_utils
 * More VHDL support
+* Combine port and module class modules
+* Handle modules with generics/parameter defining the port size.
 * Test Cases to add
   * Create a module, write to file, read back in and compare with original.
 

@@ -6,3 +6,5 @@ readme:
 
 help:
 	./rtl_utils.py -h
+	pydoc rtl.utils
+  

@@ -1,5 +1,6 @@
 import datetime
 from string import Template
+import sys
 import os
 import re
 import hdl_parser as parser
@@ -354,27 +355,34 @@ def disp_io(fn, inputs, outputs, inout):
 
     if inputs:
         print "Module:" + mn + " Inputs"
+
     for port in ports:
-        if (port['type'] == 'input') & (inputs):
-            print "{}".format(port['name'])
+        if port.direction == 'input' and inputs:
+            print "{}".format(port.name)
     print " "
 
     if outputs:
         print "Module:" + mn + " Outputs"
     for port in ports:
-        if (port['type'] == 'output') & (outputs):
-            print "{}".format(port['name'])
+        if port.direction == 'output' and outputs:
+            print "{}".format(port.name)
     print " "
 
     if inout:
         print "Module:" + mn + " Inout"
     for port in ports:
-        if ((port['type'] == 'inout') & (inout)):
-            print "{}".format(port['name'])
+        if port.direction == 'inout' and inout:
+            print "{}".format(port.name)
     print " "
 
 
 def split_netlist_files(netlist_file_name):
+    """
+    Super useful function for syntheised netlists! Will create a directory called "netlist" and create individual
+    files for each module in the single netlist file.
+    :param netlist_file_name: The source netlist file to split up
+    :return: None
+    """
     # Create the netlist directory if not already there
     if not os.path.exists('./netlist'):
         os.makedirs('./netlist')
@@ -397,46 +405,56 @@ def split_netlist_files(netlist_file_name):
             fout.write(line)
             fout.close()
 
-        if fout is not  None:
+        if fout is not None:
             if fout.closed is False:
                 fout.write(line)
 
 
 def compare_modules(modules):
-    import tabulate
+    """
+    Compares 2 modules and lists the ports that are common and the port that are different by name, size or direction.
+    :param modules: List of 2 rtl files to compare.
+    :return:
+    """
     if len(modules) != 2:
         print "ERROR: Can only compare 2 files"
         return
 
-    (mn1, p1) = parser.get_verilog_port_list(open(modules[0]).read())
-    (mn2, p2) = parser.get_verilog_port_list(open(modules[1]).read())
+    mod1 = module.Module(modules[0])
+    mod2 = module.Module(modules[1])
 
     modules[0] = os.path.abspath(modules[0])
     modules[1] = os.path.abspath(modules[1])
 
+    print "File 1: " + modules[0]
+    print "File 2: " + modules[1]
+
     comprefix = len(os.path.commonprefix(modules))
-    print comprefix
 
     modules[0] = '~' + modules[0][comprefix:]
     modules[1] = '~' + modules[1][comprefix:]
-    for p in p1:
-        p['width'] = range_to_num_bits(p['size'])
-
-    for p in p2:
-        p['width'] = range_to_num_bits(p['size'])
 
     table = []
-    for p in p1:
-        if p in p2:
-            table.append([p['name'], p['width'], p['width'], p['type']])
-            p2.remove(p)
+    for port1 in mod1.port_list:
+        if mod2.has_port(port1.name):
+            port2 = mod2.get_port(port1.name)
+            if port2.direction != port1.direction:
+                table.append([port1.name, port1.size, port2.size, port1.direction + "/" + port2.direction])
+            else:
+                table.append([port1.name, port1.size, port2.size, port1.direction])
         else:
-            table.append([p['name'], p['width'], ' ', p['type']])
+            table.append([port1.name, port1.size, ' ', port1.direction])
 
-    for p in p2:
-        table.append([p['name'], ' ', p['width'], p['type']])
+    for port2 in mod2.port_list:
+        if not mod1.has_port(port2.name):
+            table.append([port2.name, ' ', port2.size, port2.direction])
 
-    print tabulate.tabulate(table, headers=['name', modules[0], modules[1], "Direction"], tablefmt="psql")
+    print "+{}+{}+{}+{}+".format(40*"-", 20*"-", 20*"-", 10*"-")
+    print "|{:40}|{:20}|{:20}|{:10}|".format("Port", mod1.module_name, mod2.module_name, "Direction")
+    print "+{}+{}+{}+{}+".format(40*"-", 20*"-", 20*"-", 10*"-")
+    for row in table:
+        print "|{:40}|{:10}          |{:10}          |{:10}|".format(row[0], row[1], row[2], row[3])
+    print "+{}+{}+{}+{}+".format(40*"-", 20*"-", 20*"-", 10*"-")
 
 
 def create_stub(file_name, drivezero=False):
@@ -448,13 +466,13 @@ def create_stub(file_name, drivezero=False):
     stub = module.Module(file_name)
 
     for port in stub:
-        if port.direction == "output":
+        if port.direction == "output" and drivezero is True:
             stub.add_custom_RTL("assign {} = {}'b{};".format(port.name, port.size, "0"*port.size))
 
     return stub.export_rtl()
 
 
-def create_wrapper(file_list, wrapper_name = "top_level", prefix=None, suffix=None, blackbox=False, fuzzymatch=95):
+def create_wrapper(file_list, wrapper_name="top_level", prefix=None, suffix=None, blackbox=False, fuzzymatch=95):
     """
     Reads each of the rtl modules from file_list.
     Creates a toplevel module with all the ports
@@ -468,11 +486,12 @@ def create_wrapper(file_list, wrapper_name = "top_level", prefix=None, suffix=No
     Black box modules only bring out pins but don't instance sub modules
     Suffix/Prefix lists help to better match pins.
 
-    :param file_list:
-    :param prefix:
-    :param suffix:
-    :param blackbox:
-    :param fuzzymatch:
+    :param file_list: A list of HDL files to instance in the wrapper, give the same filename multiple times for multiple instances.
+    :param wrapper_name:  The name to give the top level wrapper module
+    :param prefix: A list  of known prefixes to help with port matching
+    :param suffix: A list of known suffixes to help with port matching
+    :param blackbox: Only instance the toplevel module without the sub-blocks.
+    :param fuzzymatch: When matching using best guess, the min confidence level acceptable without erroring out
     :return: A new module with the sub-modules instanced and wired according to the rules above.
     """
 
@@ -489,20 +508,20 @@ def create_wrapper(file_list, wrapper_name = "top_level", prefix=None, suffix=No
 def gen_vhdl_package(filename):
     filename = os.path.abspath(filename)
 
-    (mn, port_list) = pyverilog_parser.get_verilog_port_list(open(filename).read())
+    (mn, port_list) = parser.get_verilog_port_list(open(filename).read())
 
     mn = mn.strip()
 
     vhdl_port_list = ""
     for port in port_list:
-        if port['size'] == 1:
+        if port.size == 1:
             size = 'std_logic'
         else:
-            size = 'std_logic_vector(' + str(port['size'] - 1) + ' downto 0)'
-        dir = port['type'].replace('put', '')
+            size = 'std_logic_vector(' + str(port.size - 1) + ' downto 0)'
+        directory = port.direction.replace('put', '')
 
         # vhdl_port_list = "\t\t\t{40:}\: {} {}".format(vhdl_port_list, dir, size)
-        vhdl_port_list = vhdl_port_list + "\t\t\t{:40}: {:5} {};\n".format(port["name"], dir, size)
+        vhdl_port_list = vhdl_port_list + "\t\t\t{:40}: {:5} {};\n".format(port.name, directory, size)
 
     vhdl_port_list = vhdl_port_list[:-2]
 
@@ -524,6 +543,7 @@ end package pkg_{0}_comp;
 
 """.format(mn, vhdl_port_list)
 
+
 def declare_signals(module_name, ports):
     """
     Declare the signals
@@ -537,28 +557,24 @@ def declare_signals(module_name, ports):
     return disp_str
 
 
-def instance_module_style1(module_name, inst_name, ports):
+def instance_module_default_style(module_name, inst_name, ports):
     """
     Connect in the same order as declared in the module
     :param module_name:
+    :param inst_name:
     :param ports:
     :return:
     """
     # Instance the module
     disp_str = "\n{} {} (\n".format(module_name, inst_name)
 
-    first_pin = True
     for port in ports:
-        if not first_pin:
-            disp_str = disp_str + "),\n"
-        first_pin = False
-
-        disp_str = disp_str + "    .{0:42}({0}".format(port.name)
-    disp_str = disp_str + ")\n  );\n"
+        disp_str = disp_str + "    .{0:42}({0}),\n".format(port.name)
+    disp_str = disp_str[:-2] + "\n);\n"
     return disp_str
 
 
-def instance_module_style2(modulename, inst_name, ports):
+def instance_module_group_style(modulename, inst_name, ports):
     """
     Connect with inputs/outputs grouped together
     :param modulename:
@@ -567,48 +583,38 @@ def instance_module_style2(modulename, inst_name, ports):
     :return:
     """
     # Instance the module
-    if inst_name is None:
-        inst_name = "i1_" + modulename
-
     disp_str = "  {} {} (\n".format(modulename, inst_name)
 
-    first_pin = True
     disp_str = disp_str + "    // Inputs\n"
     for port in ports:
-        if port.direction  is "input":
-            if first_pin is False:
-                disp_str = disp_str + "),\n"
-            first_pin = False
+        if port.direction == "input":
+            disp_str = disp_str + "    .{0:42}({0}),\n".format(port.name)
 
-            disp_str = disp_str + "    .{0:42}({0}".format(port.name)
+    disp_str = disp_str + "\n    // Outputs\n"
 
-    disp_str = disp_str + "),\n\n    // Outputs\n"
-
-    first_pin = True
     for port in ports:
-        if port.direction is "output":
-            if first_pin is False:
-                disp_str = disp_str + "),\n"
-            first_pin = False
-            disp_str = disp_str + "    .{0:42}({0}".format(port.name)
+        if port.direction == "output":
+            disp_str = disp_str + "    .{0:42}({0}),\n".format(port.name)
 
-    disp_str = disp_str + ")\n  );\n"
+    # Remove the last comma
+    disp_str = disp_str[:-2] + "\n);\n\n\n"
     return disp_str
 
 
-def instance_module_style3(module_name, ports):
+def instance_module_alpha_style(module_name, ports):
     raise NotImplementedError("Not much of a use case for this...")
 
 
-def instance_module_style5(module_name, ports):
+def instance_module_vhdl_style(module_name, entity_name, ports):
     """
     Instance VHDL module
     :param module_name:
+    :param entity_name:
     :param ports:
     :return:
     """
     # Instance the module
-    disp_str = "\n{0} : {0} port map (\n".format(module_name)
+    disp_str = "\n{} : {} port map (\n".format(entity_name, module_name)
 
     for port in ports:
         disp_str = disp_str + "    {0:42} => {0},".format(port.name) + '\n'
@@ -617,36 +623,42 @@ def instance_module_style5(module_name, ports):
     return disp_str
 
 
-###############################################################################
-# Just instance the default way.
 def instance_module(fn, inst_name=None, style="default"):
+    """
+    Instance the module gving in the RTL file.  If no instance name is given then a default one is provided.
+
+    :param fn: RTL file containing module to instance
+    :param inst_name: optional instance name, default will be generated
+    :param style: optional style, options are default or group
+    :return: string of the instance
+    """
     mod_to_inst = module.Module(fn)
 
     if inst_name is None:
         inst_name = "i1_" + mod_to_inst.module_name
 
     inst_style_types = {
-        "default": instance_module_style1,
-        "group_ports": instance_module_style2,
-        "alphabetical": instance_module_style3,
-        "vhdl": instance_module_style5
+        "default": instance_module_default_style,
+        "group": instance_module_group_style,
+        "alphabetical": instance_module_alpha_style,
+        "vhdl": instance_module_vhdl_style
     }
     return inst_style_types[style](mod_to_inst.module_name, inst_name, mod_to_inst.port_list)
 
 
-def dangling_pins(dangling_in, dangling_out):
+def _dangling_pins(dangling_in, dangling_out):
     print "TODO:// Write this function!"
     print "ERROR: Nothing done"
     raise NotImplementedError
 
 
-def unused_declarations(dangling_in, dangling_out):
+def _unused_declarations(dangling_in, dangling_out):
     print "TODO:// Write this function!"
     print "ERROR: Nothing done"
     raise NotImplementedError
 
 
-def list_flops(verilog):
+def _list_flops(verilog):
     """
   NotImplementedError
   Searches for always blocks with a pos/negedge clock. Returns the following info:
@@ -662,7 +674,7 @@ def list_flops(verilog):
     raise NotImplementedError
 
 
-def lint_code(verilog):
+def _lint_code(verilog):
     """
   NotImplementedError
   Searches for the following:
@@ -678,7 +690,9 @@ def lint_code(verilog):
 
 
 if __name__ == "__main__":
-    print instance_module("../test/samples/rtl/sample.v")
+    print instance_module("../test/samples/rtl/sample.v", "i1_sample", "vhdl")
+    compare_modules(["../test/samples/rtl/sample2.v",
+                     "../test/samples/rtl/sample.v"])
     print create_wrapper(["../test/samples/rtl/sample2.v",
                           "../test/samples/rtl/sample2.v",
                           "../test/samples/rtl/sample.v"],

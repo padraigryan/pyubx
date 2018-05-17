@@ -77,9 +77,18 @@ class UtilsTest(unittest.TestCase):
 
     # Comments
 
-    # Create Module
-    def testCreateModule(self):
-        pass
+    # RTL Introspection
+    def testListInstances(self):
 
+    # Create Module
+    def testParseModule(self):
+        dut = Module()
+
+    def testCreateModule(self):
+        """
+
+        :return:
+        """
+        pass
 if __name__ == "__main__":
     unittest.main()
