@@ -68,6 +68,7 @@ Correctly create the packages so that the code can be imported properly
 * More VHDL support
 * Combine port and module class modules
 * Handle modules with generics/parameter defining the port size.
+* Use pyparsing instead of hacking my own code
 * Test Cases to add
   * Create a module, write to file, read back in and compare with original.
 
@@ -95,6 +96,13 @@ Correctly create the packages so that the code can be imported properly
  * Put all RAL classes into a single module.
  * Add a spirit 1685 xml parser to read/load registers
  * Handle memories
+ * Decoder for tarmac files
+ * Decoder for listing files
 
 ### Importable Modules
+
+### Development Tools Used
+ * pyCharm IDE with vim plugin
+ * git for revision control
+ ** With gitkracken
 
