@@ -46,7 +46,7 @@ class VCDFile:
         self.timeunit = 'ns'
         if create_new:
             self.vcd_file_contents = ""
-            self.fh = open(opt.vcd_file_name, 'w')
+            self.fh = open(fn, 'w')
             self.set_vcd_comment('u-blox vcd editor (c) 2017')
             self.set_vcd_date()
             self.set_vcd_timescale('1fs')
@@ -138,12 +138,19 @@ class VCDFile:
         }
         return header
 
-    def read_vcd_header(self):
+    def read_vcd_header(self, include_dumpvars=False):
         hdr = ""
+        dump_vars=False
         for line in self.vcd_file_contents:
-            hdr = hdr + line
             if "$dumpvars" in line.lower():
+                if include_dumpvars:
+                    dump_vars = True
+                else:
+                    return hdr
+            elif dump_vars and "$end" in line.lower():
                 return hdr
+            else:
+                hdr = hdr + line
 
     def _get_vcd_header_item(self, item_name):
         item_flag = False
@@ -227,16 +234,19 @@ class VCDFile:
     # TODO: A list of timestamp ranges to be active.
     def parse_vcd_vars(self, func, change_on=None, time_range=None):
         vars_changing = False
+        dump_vars =False
         for line in self.vcd_file_contents:
-            if not vars_changing and 'enddefinitions' in line:
+            if not vars_changing and line.startswith("$dumpvars"):
+                dump_vars = True
+            if dump_vars and line.startswith("$end"):
                 vars_changing = True
             elif vars_changing and change_on is None:
                 self._decode_vcd_line(line)
-                func(self.signals, self.timestamp)
+                func(self.signals, self.timestamp, line)
             elif vars_changing:
                 updated_sig = self._decode_vcd_line(line)
                 if updated_sig in change_on:
-                    func(self.signals, self.timestamp)
+                    func(self.signals, self.timestamp, line)
 
     def __str__(self):
         mystr = ""
