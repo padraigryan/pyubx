@@ -74,11 +74,11 @@ class RAL_base:
     except:
       pass
 
-  """
-  Displays the whole register map. This can be very verbose for higher level blocks since
-  everything is displayed
-  """
   def display(self):
+    """
+    Displays the whole register map. This can be very verbose for higher level blocks since
+    everything is displayed
+    """
     for (blk_name, blk) in self.ral_item.iteritems():
       print blk
 

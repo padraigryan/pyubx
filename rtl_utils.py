@@ -78,16 +78,13 @@ if __name__ == "__main__":
         if opt.vhdl_package:
             utils.gen_vhdl_package(hdl_file)
 
-        try:
-            if opt.unloaded_inputs | opt.undriven_outputs:
-                utils.dangling_pins(opt.unloaded_inputs, opt.undriven_outputs)
+        if opt.unloaded_inputs | opt.undriven_outputs:
+            utils.dangling_pins(opt.unloaded_inputs, opt.undriven_outputs)
 
-            if opt.connections:
-                print utils.list_inst_connections(hdl_file, opt.module_type, opt.module_inst)
-            if opt.inputs | opt.outputs | opt.inputoutputs:
-                utils.disp_io(hdl_file, opt.inputs, opt.outputs, opt.inputoutputs)
-            if opt.list_instances:
-                utils.disp_instances(hdl_file)
-        except:
-            print "Can't open file:" + hdl_file
+        if opt.connections:
+            print utils.list_inst_connections(hdl_file, opt.module_type, opt.module_inst)
+        if opt.inputs | opt.outputs | opt.inputoutputs:
+            utils.disp_io(hdl_file, opt.inputs, opt.outputs, opt.inputoutputs)
+        if opt.list_instances:
+            utils.disp_instances(hdl_file)
 

@@ -4,15 +4,17 @@ import sys
 import os
 import re
 import hdl_parser as parser
-import module
+from module import Module
+import logging
+import port as rtl_port
 
 base_spec = {
-            'h': 16,
-            'x': 16,
-            'd': 10,
-            's': 10,
-            'b': 2
-            }
+    'h': 16,
+    'x': 16,
+    'd': 10,
+    's': 10,
+    'b': 2
+}
 
 
 def create_copyright_header(comment_char='//'):
@@ -193,7 +195,6 @@ def join_hdl_paths(path_bits, hw_separator='.'):
     return full_path
 
 
-# TODO: Is this useful?
 def _search_keyword(s_str, keyword):
     s_str = re.sub(r'\W+', '', s_str)
     if s_str.find(keyword) < 0:
@@ -225,12 +226,21 @@ def list_instances(verilog_file_name):
     Limitations:
     Mostly intended for structural verilog, some RTL will cause problems.
 
+    TODO: 0) Just Use pyparsing
     TODO: 1) Instances with parameter definitions
-          2) Instances within a generate statement
+    TODO: 2) Instances within a generate statement
     """
     with open(verilog_file_name) as verilog_file_h:
         verilog = verilog_file_h.read()
         verilog_file_h.close()
+
+    verilog = verilog.replace("\n", "")
+    m = re.findall("(.+?)\s+(.+?)\s*\(.*\);", verilog)
+
+    # print m.group(1)
+    print
+    print m[0]
+    asdf
 
     inst_list = []
     block_cnt = 0
@@ -256,18 +266,19 @@ def list_instances(verilog_file_name):
                 pass
             else:
                 statement = statement + line
-                statement = ''                      #  TODO: Wasted statement
+                statement = ''  # TODO: Wasted statement
 
         elif len(sline) >= 2:
             # Find the module name
             if sline[0] == "module":
                 module_name = sline[1].strip('(')
             elif (sline[0] in ['always', 'initial', 'logic', 'wire', 'reg', 'input', 'output', 'inout', 'assign',
-                               'integer']):
+                               'integer', 'parameter', 'task', 'function']):
                 pass
 
             elif (line.find('.') > 0) | (line.find(')') > 0) | (line.find(',') > 0):
-                # connect_list.append(''.join(c for c in a if c not  in ['.' , '(' , ')', ',']).split())        # Removes the .(), and returns the port connection.
+                # connect_list.append(''.join(c for c in a if c not  in ['.' , '(' , ')', ',']).split())
+                #  Removes the .(), and returns the port connection.
                 #  print sline[0]
                 pass
             else:
@@ -420,8 +431,8 @@ def compare_modules(modules):
         print "ERROR: Can only compare 2 files"
         return
 
-    mod1 = module.Module(modules[0])
-    mod2 = module.Module(modules[1])
+    mod1 = Module(modules[0])
+    mod2 = Module(modules[1])
 
     modules[0] = os.path.abspath(modules[0])
     modules[1] = os.path.abspath(modules[1])
@@ -449,12 +460,12 @@ def compare_modules(modules):
         if not mod1.has_port(port2.name):
             table.append([port2.name, ' ', port2.size, port2.direction])
 
-    print "+{}+{}+{}+{}+".format(40*"-", 20*"-", 20*"-", 10*"-")
+    print "+{}+{}+{}+{}+".format(40 * "-", 20 * "-", 20 * "-", 10 * "-")
     print "|{:40}|{:20}|{:20}|{:10}|".format("Port", mod1.module_name, mod2.module_name, "Direction")
-    print "+{}+{}+{}+{}+".format(40*"-", 20*"-", 20*"-", 10*"-")
+    print "+{}+{}+{}+{}+".format(40 * "-", 20 * "-", 20 * "-", 10 * "-")
     for row in table:
         print "|{:40}|{:10}          |{:10}          |{:10}|".format(row[0], row[1], row[2], row[3])
-    print "+{}+{}+{}+{}+".format(40*"-", 20*"-", 20*"-", 10*"-")
+    print "+{}+{}+{}+{}+".format(40 * "-", 20 * "-", 20 * "-", 10 * "-")
 
 
 def create_stub(file_name, drivezero=False):
@@ -463,44 +474,217 @@ def create_stub(file_name, drivezero=False):
     :param drivezero: Should the outputs be driven to zero.
     :return: An empty stub module
     """
-    stub = module.Module(file_name)
+    stub = Module(file_name)
 
     for port in stub:
         if port.direction == "output" and drivezero is True:
-            stub.add_custom_RTL("assign {} = {}'b{};".format(port.name, port.size, "0"*port.size))
+            stub.add_custom_RTL("assign {} = {}'b{};".format(port.name, port.size, "0" * port.size))
 
     return stub.export_rtl()
 
 
-def create_wrapper(file_list, wrapper_name="top_level", prefix=None, suffix=None, blackbox=False, fuzzymatch=95):
+def input_to_all_blks(port_name, blklist, prefix=None, suffix=None):
+    def _input_to_all_blks(port_name, blklist, prefix=None, suffix=None):
+        cnt = 0
+        for blk in blklist:
+            for port in blk.port_list:
+                try:
+                    dest_port_name = port.name[:-len((filter(lambda x: port.name.endswith(x), suffix))[0])]
+                except:
+                    dest_port_name = port.name
+                try:
+                    src_port_name = port_name[:-len((filter(lambda x: port_name.endswith(x), suffix))[0])]
+                except:
+                    src_port_name = port_name
+
+                if dest_port_name == src_port_name and port.direction == "input":
+                    cnt = cnt + 1
+                    break
+                try:
+                    dest_port_name = port.name[:-len((filter(lambda x: port.name.startswith(x), prefix))[0])]
+                except:
+                    dest_port_name = port.name
+                try:
+                    src_port_name = port_name[:-len((filter(lambda x: port_name.startswith(x), prefix))[0])]
+                except:
+                    src_port_name = port_name
+
+                if dest_port_name == src_port_name and port.direction == "input":
+                    cnt = cnt + 1
+                    break
+        return cnt
+
+    cnt = _input_to_all_blks(port_name, blklist, None, None)
+    if cnt != 0:
+        return cnt
+
+    # There's no match, strip the suffix and try again
+    cnt = _input_to_all_blks(port_name, blklist, None, suffix)
+    if cnt != 0:
+        return cnt
+
+    # Still no match, try stripping the prefix
+    cnt = _input_to_all_blks(port_name, blklist, prefix, None)
+    return cnt
+
+
+def output_from_all_blks(port_name, blklist, prefix=None, suffix=None):
+    def _output_from_all_blks(port_name, blklist, prefix=None, suffix=None):
+        cnt = 0
+        for blk in blklist:
+            for port in blk.port_list:
+                # Remove the Suffix and test
+                try:
+                    dest_port_name = port.name[:-len((filter(lambda x: port.name.endswith(x), suffix))[0])]
+                except:
+                    dest_port_name = port.name
+                try:
+                    src_port_name = port_name[:-len((filter(lambda x: port_name.endswith(x), suffix))[0])]
+                except:
+                    src_port_name = port_name
+
+                if dest_port_name == src_port_name and port.direction == "output":
+                    cnt = cnt + 1
+                    break
+
+                # Remove the Prefxi and test
+                try:
+                    dest_port_name = port.name[:-len((filter(lambda x: port.name.startswith(x), prefix))[0])]
+                except:
+                    dest_port_name = port.name
+                try:
+                    src_port_name = port_name[:-len((filter(lambda x: port_name.startswith(x), prefix))[0])]
+                except:
+                    src_port_name = port_name
+
+                if dest_port_name == src_port_name and port.direction == "output":
+                    cnt = cnt + 1
+                    break
+        return cnt
+
+    cnt = _output_from_all_blks(port_name, blklist, None, None)
+    if cnt != 0:
+        return cnt
+
+    # There's no match, strip the suffix and try again
+    cnt = _output_from_all_blks(port_name, blklist, None, suffix)
+    if cnt != 0:
+        return cnt
+
+    # Still no match, try stripping the prefix
+    cnt = _output_from_all_blks(port_name, blklist, prefix, None)
+    return cnt
+
+
+def remove_suffix(full_name, suffix):
+    try:
+        return full_name[:-len((filter(lambda x: full_name.endswith(x), suffix))[0])]
+    except TypeError:
+        return full_name
+    except IndexError:
+        return full_name
+
+
+def remove_prefix(full_name, prefix):
+    try:
+        return full_name[:-len((filter(lambda x: full_name.startswith(x), prefix))[0])]
+    except TypeError:
+        return full_name
+    except IndexError:
+        return full_name
+
+
+def create_wrapper(file_list, wrapper_name="top_level", prefix=None, suffix=None, blackbox=False):
     """
     Reads each of the rtl modules from file_list.
     Creates a toplevel module with all the ports
-    instance each sub module with the following rules of connecting pins:
+    Instance each sub module with the following rules of connecting pins:
         1) if the pin is only an input to each sub module, it's an input from the top
-        2) if the pin is output from more than one module,  prepend inst and bring to top level
-        3) if pin is output from one module and input to another, interconnect only
-        4) Repeat rules 1-3 are repeated with the prefix/suffix removed/added.
-        5) Repeat rules 1-4 with fuzzy matching
-        6) All other pins are brought to the top level with the same directionality
+        2a) if the pin is output from more than one module,  prepend inst and bring to top level
+        2b) if the pin is output from one module only, bring to top level
+        2c) if pin is output from one module and input to another, interconnect only.
+        2d) if pin is output from one module only and input to multiple subblocks, interconnect only
+        3) Repeat rules 1-3 are repeated with the prefix/suffix removed/added.
+        4) Repeat rules 1-4 with fuzzy matching
+        5) All other pins are brought to the top level with the same directionality
     Black box modules only bring out pins but don't instance sub modules
     Suffix/Prefix lists help to better match pins.
+    TODO: Pass a top level black box and hook subblocks into it.
+    TODO: Pass a translation function for known port name changes.
 
-    :param file_list: A list of HDL files to instance in the wrapper, give the same filename multiple times for multiple instances.
+    :param file_list: A list of tuples that contain HDL files to instance in the wrapper and instance names.
+    Give the same filename multiple times for multiple instances,
     :param wrapper_name:  The name to give the top level wrapper module
     :param prefix: A list  of known prefixes to help with port matching
     :param suffix: A list of known suffixes to help with port matching
     :param blackbox: Only instance the toplevel module without the sub-blocks.
-    :param fuzzymatch: When matching using best guess, the min confidence level acceptable without erroring out
     :return: A new module with the sub-modules instanced and wired according to the rules above.
     """
 
-    # Create the top level module
-    top_level = module.Module()
-    top_level.module_name = wrapper_name
+    log = logging.getLogger("WRAPPER")
+    logging.basicConfig(level=logging.DEBUG)
 
-    for subblock_fn in file_list:
-        top_level.sub_blocks.append(module.Module(subblock_fn))
+    # Create the top level module
+    if os.path.exists(wrapper_name):
+        top_level = Module(wrapper_name)
+    else:
+        top_level = Module()
+        top_level.module_name = os.path.split(wrapper_name)[-1].split('.')[-2]
+
+    # Add all the sub modules
+    for (subblock_fn, inst_name) in file_list:
+        top_level.add_subblock(Module(subblock_fn))
+        top_level.sub_blocks[-1].inst_name = inst_name
+
+    for subblk in top_level.sub_blocks:             # Connect each block
+        for blk_port in subblk:                     # Connect each port on the block
+
+            # Now check for internal connections or if we need to add to the toplevel.
+            num_outputs = output_from_all_blks(blk_port.name, top_level.sub_blocks, prefix, suffix)
+            num_inputs = input_to_all_blks(blk_port.name, top_level.sub_blocks, prefix, suffix)
+            if blk_port.direction == "input":
+                if num_outputs == 0:
+                    top_level.add_port_list([blk_port])
+                    if num_inputs > 1:
+                        log.warn("Input  : {}:{} - From top - Single input from top to multiple instances".format(
+                            subblk.inst_name, blk_port.name))
+                    else:
+                        log.debug("Input  : {}:{} - From top".format(subblk.inst_name, blk_port.name))
+                elif num_outputs == 1:
+                    log.debug("Input  : {}:{} - Internal connection".format(subblk.inst_name, blk_port.name))
+                    blk_port.connection = remove_prefix(remove_suffix(blk_port.name, suffix), prefix)
+                else:
+                    log.warn("Input  : {}:{} - Multiple drivers".format(subblk.inst_name, blk_port.name))
+
+            elif blk_port.direction == "output":
+                if num_outputs == 1:
+                    # Straight point to point internal connection or...
+                    # One output connected to multiple inputs for internal blocks else...
+                    # Not an internal connection, bring to the top level.
+                    if num_inputs > 0:
+                        log.debug("Output : {}:{} - Internal Single output to one or more inputs".format(subblk.inst_name,
+                                                                                                      blk_port.name))
+                        blk_port.connection = remove_prefix(remove_suffix(blk_port.name, suffix), prefix)
+                        top_level.add_wire(rtl_port.Port(blk_port.connection, "output", "", blk_port.size))
+                    else:
+                        log.debug("Output : {}:{} - To top".format(subblk.inst_name, blk_port.name))
+                        top_level.add_port_list([blk_port])
+                else:
+                    # N outputs connected to N inputs:
+                    if num_inputs == 0:
+                        log.debug(
+                            "Output : {}:{} - Multiple To top, prefix instance".format(subblk.inst_name, blk_port.name))
+                        blk_port.connection = subblk.inst_name + "_" + blk_port.name
+                        toplevelport = rtl_port.Port(blk_port.connection, "output", blk_port.comment, blk_port.size)
+                        top_level.add_port_list([toplevelport])
+                    elif num_outputs == num_inputs:
+                        log.warn("TODO: Multiple outputs connected to N input(s)")
+                        blk_port.connection = "/* Unconnected */"
+                    else:
+                        log.warn("TODO: Multiple outputs connected to one or more input(s) need to be concatenated")
+                        blk_port.connection = "/* Unconnected */"
+            else:
+                log.error("Can only handle input/output type ports")
 
     return top_level.export_rtl()
 
@@ -632,7 +816,7 @@ def instance_module(fn, inst_name=None, style="default"):
     :param style: optional style, options are default or group
     :return: string of the instance
     """
-    mod_to_inst = module.Module(fn)
+    mod_to_inst = Module(fn)
 
     if inst_name is None:
         inst_name = "i1_" + mod_to_inst.module_name
@@ -690,10 +874,17 @@ def _lint_code(verilog):
 
 
 if __name__ == "__main__":
-    print instance_module("../test/samples/rtl/sample.v", "i1_sample", "vhdl")
-    compare_modules(["../test/samples/rtl/sample2.v",
-                     "../test/samples/rtl/sample.v"])
-    print create_wrapper(["../test/samples/rtl/sample2.v",
-                          "../test/samples/rtl/sample2.v",
-                          "../test/samples/rtl/sample.v"],
-                         "toplevel_wrapper")
+    # print list_instances("../test/samples/rtl/sample.v")
+    # print instance_module("../test/samples/rtl/sample.v", "i1_sample", "vhdl")
+    # compare_modules(["../test/samples/rtl/sample2.v",
+    #                 "../test/samples/rtl/sample.v"])
+    try:
+        os.remove("../test/samples/rtl/toplevel_wrapper.v")
+    except:
+        pass
+    print create_wrapper([("../test/samples/rtl/blkA.v", "rx1"),
+                          ("../test/samples/rtl/blkA.v", "rx2"),
+                          ("../test/samples/rtl/blkB.v", "i0")],
+                         "../test/samples/rtl/toplevel_wrapper.v",
+                         None,
+                         ["_i", "_o", "xCI"])

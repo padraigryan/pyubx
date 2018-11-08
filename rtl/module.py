@@ -1,60 +1,7 @@
 #!/usr/bin/env python
-
 import hdl_parser
 import utils
-
-
-class Port:
-    def __init__(self, name, direction='output', comment="", size=1, default=None):
-        self.name = name
-        self.size = size
-        self.direction = direction
-        self.default = default
-        self.connection = self.name
-        self.comment = comment
-        self.customise = None
-
-    def __str__(self):
-        return "Port: {:30}{:30}{:8}{}".format(self.name, self.connection, self.direction, self.size)
-
-
-apb_port_list = [
-    Port('PClk', 'input', "APB Clock"),
-    Port('PReset', 'input', "APB Reset"),
-    Port('PAddr', 'input', "APB Adddress", 32),
-    Port('PSel', 'input', "APB Select", 1),
-    Port('PEnable', 'input', "APB Enable", 1),
-    Port('PWrite', 'input', "APB Write", 1),
-    Port('PWData', 'input', "APB Write Data", 32),
-    Port('PReady', 'output', "APB Ready", 1),
-    Port('PRData', 'output', "APB Read Data", 32),
-    Port('PSlverr', 'output', "APB ", 1)
-]
-
-
-# TODO: Leave this here????
-def find_port(name, port_list):
-    # Check for capitalisation errors
-    for port in port_list:
-        if (port.name != name) & (port.name.lower() == name.lower()):
-            print port.name,
-            print name
-            raise NameError("Port names only differ by capitalisation : {} - {}".format(port.name, name))
-
-    for port in port_list:
-        if port.name == name:
-            return True
-    return False
-
-
-# TODO: Leave this here????
-def remove_port_from_list(port_name, port_list):
-    for p in port_list:
-        if p['name'] == port_name:
-            port_list.remove(p)
-            return
-
-    raise NameError("Tried to remove a port from list that isn't in the list: " + port_name)
+from port import *
 
 
 class Module:
@@ -65,6 +12,7 @@ class Module:
         self.custom_RTL = ""
         self.wire_list = []  # Also a list of ports, but that require a wire.
         self.module_name = ""
+        self.inst_name = None
 
         # If the name is a file, read the details from the RTL instead
         if name is None:
@@ -95,6 +43,11 @@ class Module:
         return self.port_list[-1]
 
     def remove_port(self, port_name):
+        """
+
+        :param port_name:
+        :return:
+        """
         for p in self.port_list:
             if p.name == port_name:
                 # print "INFO: {} Removing port : {}".format(self.name ,port_name)
@@ -104,26 +57,70 @@ class Module:
         return False
 
     def get_port(self, port_name):
+        """
+
+        :param port_name:
+        :return:
+        """
+
         for p in self.port_list:
             if p.name == port_name:
                 return p
         return None
 
     def has_port(self, port_name):
+        """
+
+        :param port_name:
+        :return:
+        """
         for p in self.port_list:
             if p.name == port_name:
                 return True
         return False
 
+    def has_input(self, port_name):
+        """
+
+        :param port_name:
+        :return:
+        """
+        for p in self.port_list:
+            if p.name == port_name and p.direction == "input":
+                return True
+        return False
+
+    def has_output(self, port_name):
+        """
+
+        :param port_name:
+        :return:
+        """
+        for p in self.port_list:
+            if p.name == port_name and p.direction == "output":
+                return True
+        return False
+
     def change_connection(self, cur_port, new_connect):
+        """
+
+        :param cur_port:
+        :param new_connect:
+        :return:
+        """
         for p in self.port_list:
             if p.name == cur_port:
                 p.connection = new_connect
                 return  # break out
 
     def add_wire(self, wire):
+        """
+
+        :param wire:
+        :return:
+        """
         for w in self.wire_list:
-            if (w.name == wire.name) or (w.name[:-2] == wire.name[:-2]):
+            if w.name is wire.name:
                 # print "WARN: Already have wire declared for " + w.name
                 return
         if self.has_port(wire.name):
@@ -133,12 +130,25 @@ class Module:
         self.wire_list.append(wire)
 
     def add_custom_RTL(self, rtl_str):
+        """
+
+        :param rtl_str:
+        :return:
+        """
         self.custom_RTL = self.custom_RTL + "  " + rtl_str + "\n"
 
     def instance_module(self, instance_name=None):
+        """
+
+        :param instance_name:
+        :return:
+        """
 
         if instance_name is None:
-            instance_name = self.module_name
+            if self.inst_name is None:
+                instance_name = self.module_name
+            else:
+                instance_name = self.inst_name
 
         inst_str = "\n{} {} (\n".format(self.module_name, instance_name)
 
@@ -153,7 +163,26 @@ class Module:
     def customise(self, dummy=None):
         pass
 
+    def add_subblock(self, new_subblk):
+        """
+
+        :param new_subblk:
+        :return:
+        """
+        cnt = 0;
+        for sb in self.sub_blocks:
+            if new_subblk.module_name == sb.module_name:
+                cnt = cnt + 1
+        new_subblk.inst_name  = "i{}_{}".format(cnt, new_subblk.module_name)
+        self.sub_blocks.append(new_subblk)
+
     def export_rtl(self, file_name=None, black_box=False):
+        """
+
+        :param file_name:
+        :param black_box:
+        :return:
+        """
         rtl_str = utils.create_copyright_header()
 
         if self.module_name is None:
@@ -178,9 +207,10 @@ class Module:
             if len(self.sub_blocks) > 0:
                 rtl_str = rtl_str + "  // Sub-module Instance\n"
 
-            for blk in range(0, len(self.sub_blocks)):
-                inst_name = "i{}_{} ".format(blk, self.sub_blocks[blk].module_name)
-                rtl_str = rtl_str + self.sub_blocks[blk].instance_module(inst_name)
+            for blk in self.sub_blocks:
+                if blk.inst_name is None:
+                    blk.inst_name = "i{}_{} ".format(blk, blk.module_name)
+                rtl_str = rtl_str + blk.instance_module(blk.inst_name)
 
         rtl_str = rtl_str + "endmodule\n"
 
@@ -195,10 +225,16 @@ class Module:
     def parse_rtl_file(self, file_name):
         """
         Parse a verilog file to create a new Module object with all the ports filled out.
+
+        :param file_name:
+        :return:
         """
-        port_list = hdl_parser.get_hdl_ports(file_name)
-        for ports in port_list:
-            self.add_port_list(ports)
+        try:
+            port_list = hdl_parser.get_hdl_ports(file_name)
+        except ValueError:
+            port_list = hdl_parser.get_hdl_ports(file_name, file_name.split('/')[-1].split('.')[-2])
+
+        self.add_port_list(port_list)
         self.module_name = hdl_parser.get_block_name(file_name)
 
     def _write_pin_list(self):
@@ -252,4 +288,4 @@ if __name__ == "__main__":
     custom_mod.module_name = "myblk"
     top_mod.sub_blocks.append(custom_mod)
 
-    top_mod.export_rtl("my_sample.v")
+    top_mod.export_rtl("/tmp/my_sample.v")

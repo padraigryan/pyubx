@@ -1,6 +1,7 @@
 import env
 from utils import *
 import unittest
+from module import Module
 
 
 class UtilsTest(unittest.TestCase):
@@ -79,10 +80,62 @@ class UtilsTest(unittest.TestCase):
 
     # RTL Introspection
     def testListInstances(self):
+        pass
+
+    def testSimpleHier(self):
+        top_mod = Module()
+        low_mod = Module()
+        addr_mod = Module()
+
+        top_mod.parse_rtl_file("../test/samples/rtl/sample.v")
+        low_mod.parse_rtl_file("../test/samples/rtl/sample2.v")
+        # addr_mod.parse_rtl_file("../test/samples/rtl/adder.vhd")
+        top_mod.sub_blocks.append(low_mod)
+        # top_mod.sub_blocks.append(addr_mod)
+
+        top_mod.export_rtl("my_sample.v")
+
+    def testListInstances(self):
+        inst_list = [
+                    ("signal_sync", "master_ld_pclk_i"),
+                    ("reset_sync",  "PResetxRBI_sync_i"),
+                    ("clockmux2",   "aux_dfe_clk_mux"),
+                    ("clockmux2",   "I_adcClkOut_mux"),
+                    ("clockmux2",   "CHI1adcClkMux_mux"),
+                    ("clockmux2",   "CHI2adcClkMux_mux")
+                    ]
+
+        (exp_mod_type, exp_inst_name) = zip(*inst_list)
+        mod = list_instances("../test/samples/rtl/sample.v")
+        for (mod_type, inst_name) in mod:
+            self.assertTrue(mod_type in exp_mod_type and inst_name in exp_inst_name)
 
     # Create Module
     def testParseModule(self):
-        dut = Module()
+        tc_expected_port_list = ["sig1", "sig2", "sig3", "sig4", "sig5", "PClkxCI", "PResetxARBI", "PEnClkxSO",
+                                 "PEnClkxSI", "PAddrxDI", "PSelxSI", "PEnablexSI", "PWritexSI",	"PWDataxDI",
+                                 "PReadyxSO", "PRDataxDO", "PSlverrxSO", "bidir_sig"]
+
+        dut = Module("../test/samples/rtl/sample2.v")
+
+        tc_tot_num_bit = 0
+        tc_ip_num_bit = 0
+        tc_op_num_bit = 0
+        tc_bi_num_bit = 0
+        for port in dut.port_list:
+            self.assertTrue((port.name in tc_expected_port_list), "Didn't find epected port: " + port.name)
+            tc_tot_num_bit = tc_tot_num_bit + port.size
+            if port.direction == "input":
+                tc_ip_num_bit = tc_ip_num_bit + port.size
+            elif port.direction == "output":
+                tc_op_num_bit = tc_op_num_bit + port.size
+            elif port.direction == "inout":
+                tc_bi_num_bit = tc_bi_num_bit + port.size
+
+        self.assertEqual(tc_tot_num_bit, 109)
+        self.assertEqual(tc_ip_num_bit, 73)
+        self.assertEqual(tc_op_num_bit, 35)
+        self.assertEqual(tc_bi_num_bit, 1)
 
     def testCreateModule(self):
         """
@@ -90,5 +143,7 @@ class UtilsTest(unittest.TestCase):
         :return:
         """
         pass
+
+
 if __name__ == "__main__":
     unittest.main()

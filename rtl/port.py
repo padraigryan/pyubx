@@ -26,6 +26,9 @@ apb_port_list = [
     Port('PSlverr', 'output', "APB ", 1)
 ]
 
+vhdl_suffix = ["CI", "CO", "I", "O", "RBI", "ARBI"]
+verilog_suffix = ["i", "o"]
+
 
 # TODO: Leave this here????
 def find_port(name, port_list):
